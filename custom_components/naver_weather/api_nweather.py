@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .air_quality import parse_pollution
+from .air_quality import air_detail_url, local_air_url, parse_air_detail, parse_pollution
 
 from .const import (
     OZON,
@@ -86,13 +86,9 @@ def re2key(key,val):
     if val is None:
         return None
 
-    r = re.compile(f"{key} -?\\d+\\.?\\d?")
-    rtn = r.findall(val)
-
-    if len(rtn) > 0:
-        return rtn[0]
-    else:
-        return None
+    r = re.compile(rf"{key}\s*[:]?\s*(-?\d+\.?\d?)")
+    match = r.search(val)
+    return match.group(1) if match else None
 
 def re2keyW(val):
     if val is None:
@@ -249,6 +245,7 @@ class NWeatherAPI:
             soup = BeautifulSoup(await response.text(), "html.parser")
 
             #미세먼지
+            url_air = local_air_url(soup, url, url_air)
             air = await session.get(url_air, headers=hdr, timeout=30)
             air.raise_for_status()
 
@@ -519,6 +516,22 @@ class NWeatherAPI:
 
             # Source labels must not depend on translated entity names.
             grades, Ozon = parse_pollution(bs4air)
+            # Search cards provide grades only; the linked detail page embeds
+            # the current station's ozone ppm measurement separately.
+            detail_url = air_detail_url(bs4air)
+            if detail_url:
+                try:
+                    detail = await session.get(detail_url, headers=hdr, timeout=30)
+                    detail.raise_for_status()
+                    detail_grades, detail_ozone = parse_air_detail(
+                        BeautifulSoup(await detail.text(), "html.parser"))
+                    for label, grade in detail_grades.items():
+                        if not grades.get(label):
+                            grades[label] = grade
+                    if Ozon is None:
+                        Ozon = detail_ozone
+                except Exception as ex:
+                    _LOGGER.warning("[%s] Optional air-detail fetch failed: %s", BRAND, ex)
             OzonGrade = grades.get("오존")
             coGrade = grades.get("일산화탄소")
             so2Grade = grades.get("아황산가스")

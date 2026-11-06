@@ -8,7 +8,10 @@ from bs4 import BeautifulSoup
 
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .air_quality import air_detail_url, local_air_url, parse_air_detail, parse_pollution
+
 from .const import (
+    OZON,
     BRAND,
     BSE_URL,
     SW_VERSION,
@@ -83,13 +86,9 @@ def re2key(key,val):
     if val is None:
         return None
 
-    r = re.compile(f"{key} -?\\d+\\.?\\d?")
-    rtn = r.findall(val)
-
-    if len(rtn) > 0:
-        return rtn[0]
-    else:
-        return None
+    r = re.compile(rf"{key}\s*[:]?\s*(-?\d+\.?\d?)")
+    match = r.search(val)
+    return match.group(1) if match else None
 
 def re2keyW(val):
     if val is None:
@@ -246,6 +245,7 @@ class NWeatherAPI:
             soup = BeautifulSoup(await response.text(), "html.parser")
 
             #미세먼지
+            url_air = local_air_url(soup, url, url_air)
             air = await session.get(url_air, headers=hdr, timeout=30)
             air.raise_for_status()
 
@@ -297,6 +297,9 @@ class NWeatherAPI:
             
             # 습도
             Humidity      = re2num(re2key("습도", summ))
+
+            if Humidity is None and self.result:
+                Humidity = self.result.get(NOW_HUMI[0])
 
             # 현재풍속/풍향
             wind      = re2keyW(summ)
@@ -511,44 +514,29 @@ class NWeatherAPI:
             UltraFineDust      = self._bs4_select_one(bs4air, "div.state_info:nth-of-type(2) div.grade div.text_box > span.num")
             UltraFineDustGrade = self._bs4_select_one(bs4air, "div.state_info:nth-of-type(2) div.grade > span.text")
 
-            # 오염물질(오존/일산화탄소/아황산가스/이산화질소/통합대기)
-            pollution = bs4air.find("div", {"class": "other_air_info"})
-
-            # 초기화
-            Ozon = OzonGrade = None
-            co   = coGrade   = None
-            so2  = so2Grade  = None
-            no2  = no2Grade  = None
-            cai  = caiGrade  = None
-
-            if pollution is not None:
-                survey = pollution.select("ul.air_info_list > li")
-
-                arrSurveyRslt = []
-
-                for li in survey:
-                    tmp1 = self._bs4_select_one(li, "span.info_title") #구분
-                    tmp2 = self._bs4_select_one(li, "span.state") #등급
-
-                    tmpDict = { "id": tmp1, "grd": tmp2}
-
-                    arrSurveyRslt.append(tmpDict)
-
-                for arr in arrSurveyRslt:
-                    if arr["id"] == OZON_GRADE[1]:
-                        OzonGrade = arr["grd"]
-
-                    if arr["id"] == CO_GRADE[1]:
-                        coGrade = arr["grd"]
-
-                    if arr["id"] == SO2_GRADE[1]:
-                        so2Grade = arr["grd"]
-
-                    if arr["id"] == NO2_GRADE[1]:
-                        no2Grade = arr["grd"]
-
-                    if arr["id"] == CAI_GRADE[1]:
-                        caiGrade = arr["grd"]
+            # Source labels must not depend on translated entity names.
+            grades, Ozon = parse_pollution(bs4air)
+            # Search cards provide grades only; the linked detail page embeds
+            # the current station's ozone ppm measurement separately.
+            detail_url = air_detail_url(bs4air)
+            if detail_url:
+                try:
+                    detail = await session.get(detail_url, headers=hdr, timeout=30)
+                    detail.raise_for_status()
+                    detail_grades, detail_ozone = parse_air_detail(
+                        BeautifulSoup(await detail.text(), "html.parser"))
+                    for label, grade in detail_grades.items():
+                        if not grades.get(label):
+                            grades[label] = grade
+                    if Ozon is None:
+                        Ozon = detail_ozone
+                except Exception as ex:
+                    _LOGGER.warning("[%s] Optional air-detail fetch failed: %s", BRAND, ex)
+            OzonGrade = grades.get("오존")
+            coGrade = grades.get("일산화탄소")
+            so2Grade = grades.get("아황산가스")
+            no2Grade = grades.get("이산화질소")
+            caiGrade = grades.get("통합대기")
 
             # 오염물질 제공
             offerInfo = self._bs4_select_one(bs4air, "div.inner > div.offer_info > span.update")
@@ -582,6 +570,7 @@ class NWeatherAPI:
                 NDUST_GRADE[0]: FineDustGrade,
                 UDUST[0]: UltraFineDust,
                 UDUST_GRADE[0]: UltraFineDustGrade,
+                OZON[0]: Ozon,
                 OZON_GRADE[0]: OzonGrade,
                 CO_GRADE[0]: coGrade,
                 SO2_GRADE[0]: so2Grade,

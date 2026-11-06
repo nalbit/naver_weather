@@ -8,8 +8,6 @@ from homeassistant.const import (
     UnitOfVolumetricFlux,
 
     PERCENTAGE,
-    CONCENTRATION_PARTS_PER_MILLION,
-    CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
 )
 
 DOMAIN = "naver_weather"
@@ -22,7 +20,7 @@ DEVICE_UPDATE = "update"
 DEVICE_REG = "register"
 DEVICE_UNREG = "unregister"
 
-SW_VERSION = "2.5.3"
+SW_VERSION = "2.5.7.1"
 BSE_URL = "https://search.naver.com/search.naver?query={}"
 
 # area
@@ -115,6 +113,7 @@ NDUST = ["Fine_Dust", "날씨 - 미세먼지", "µg/m³", "mdi:blur", SensorDevi
 UDUST_GRADE = ["Ultrafine_Dust_Level", "날씨 - 초미세먼지 수준", "", "mdi:blur-linear", ""]
 NDUST_GRADE = ["Fine_Dust_Level", "날씨 - 미세먼지 수준", "", "mdi:blur", ""]
 
+OZON = ["Ozon", "날씨 - 오존 농도", "ppm", "mdi:alpha-o-circle", SensorDeviceClass.OZONE]
 OZON_GRADE = ["Ozon_Level", "날씨 - 오존 수준", "", "mdi:alpha-o-circle", ""]
 CO_GRADE  = ["Carbon_Monoxide_Level",  "날씨 - 일산화탄소 수준", "", "mdi:molecule-co", ""]
 SO2_GRADE = ["Sulfur_Dioxide_Level", "날씨 - 아황산가스 수준", "", "mdi:alpha-s-circle", ""]
@@ -152,6 +151,7 @@ WEATHER_INFO = {
     NDUST[0]: NDUST,
     UDUST_GRADE[0]: UDUST_GRADE,
     NDUST_GRADE[0]: NDUST_GRADE,
+    OZON[0]: OZON,
     OZON_GRADE[0]: OZON_GRADE,
     CO_GRADE[0]: CO_GRADE,
     SO2_GRADE[0]: SO2_GRADE,
